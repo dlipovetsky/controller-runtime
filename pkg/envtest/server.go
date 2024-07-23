@@ -19,6 +19,7 @@ package envtest
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -221,15 +222,23 @@ func (te *Environment) Start() (*rest.Config, error) {
 		if te.AttachControlPlaneOutput {
 			if apiServer.Out == nil {
 				apiServer.Out = os.Stdout
+			} else {
+				apiServer.Out = io.MultiWriter(apiServer.Out, os.Stdout)
 			}
 			if apiServer.Err == nil {
 				apiServer.Err = os.Stderr
+			} else {
+				apiServer.Err = io.MultiWriter(apiServer.Err, os.Stderr)
 			}
 			if te.ControlPlane.Etcd.Out == nil {
 				te.ControlPlane.Etcd.Out = os.Stdout
+			} else {
+				te.ControlPlane.Etcd.Out = io.MultiWriter(apiServer.Out, os.Stdout)
 			}
 			if te.ControlPlane.Etcd.Err == nil {
 				te.ControlPlane.Etcd.Err = os.Stderr
+			} else {
+				te.ControlPlane.Etcd.Err = io.MultiWriter(apiServer.Err, os.Stderr)
 			}
 		}
 
