@@ -17,11 +17,13 @@ limitations under the License.
 package client_test
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -224,6 +226,67 @@ U5wwSivyi7vmegHKmblOzNVKA5qPO8zWzqBC
 
 		err = clientset.CertificatesV1().CertificateSigningRequests().Delete(ctx, csr.Name, *delOptions)
 		Expect(client.IgnoreNotFound(err)).NotTo(HaveOccurred())
+	})
+
+	Describe("WarningHandler", func() {
+		It("should log warnings when warning suppression is disabled", func() {
+			cache := &fakeReader{}
+			cl, err := client.New(cfg, client.Options{
+				WarningHandler: client.WarningHandlerOptions{SuppressWarnings: false}, Cache: &client.CacheOptions{Reader: cache, DisableFor: []client.Object{&corev1.Namespace{}}},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cl).NotTo(BeNil())
+
+			toCreate := &pkg.ChaosPod{
+				ObjectMeta: metav1.ObjectMeta{Name: "crd-with-unqualified-finalizer-one", Namespace: ns, Finalizers: []string{"unqualified.finalizer.example.com"}},
+			}
+			err = cl.Create(ctx, toCreate)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cl).NotTo(BeNil())
+
+			scanner := bufio.NewScanner(&log)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(
+					line,
+					"prefer a domain-qualified finalizer name to avoid accidental conflicts with other finalizer writers",
+				) {
+					return
+				}
+			}
+
+			Fail("expected to find one API server warning in the client log")
+		})
+
+		It("should not log warnings when warning suppression is enabled", func() {
+			cache := &fakeReader{}
+			cl, err := client.New(cfg, client.Options{
+				WarningHandler: client.WarningHandlerOptions{SuppressWarnings: true}, Cache: &client.CacheOptions{Reader: cache, DisableFor: []client.Object{&corev1.Namespace{}}},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cl).NotTo(BeNil())
+
+			toCreate := &pkg.ChaosPod{
+				ObjectMeta: metav1.ObjectMeta{Name: "crd-with-unqualified-finalizer-two", Namespace: ns, Finalizers: []string{"unqualified.finalizer.example.com"}},
+			}
+			err = cl.Create(ctx, toCreate)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cl).NotTo(BeNil())
+
+			err = cl.Delete(ctx, toCreate)
+			Expect(err).ToNot(HaveOccurred())
+
+			scanner := bufio.NewScanner(&log)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if strings.Contains(
+					line,
+					"prefer a domain-qualified finalizer name to avoid accidental conflicts with other finalizer writers",
+				) {
+					Fail("expected to find zero API server warnings in the client log")
+				}
+			}
+		})
 	})
 
 	Describe("New", func() {
