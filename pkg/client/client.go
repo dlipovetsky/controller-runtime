@@ -52,6 +52,10 @@ type Options struct {
 
 	// WarningHandler is used to configure the warning handler responsible for
 	// surfacing and handling warnings messages sent by the API server.
+	//
+	// Deprecated: This is deprecated and will be removed in a future release.
+	// Deprecation and future removal does not change the default behavior, which is to
+	// de-duplicate and surface warnings. For custom behavior, use config.WarningHandler.
 	WarningHandler WarningHandlerOptions
 
 	// DryRun instructs the client to only perform dry run requests.
@@ -61,6 +65,8 @@ type Options struct {
 // WarningHandlerOptions are options for configuring a
 // warning handler for the client which is responsible
 // for surfacing API Server warnings.
+//
+// Deprecated: This is deprecated and will be removed in a future release.
 type WarningHandlerOptions struct {
 	// SuppressWarnings decides if the warnings from the
 	// API server are suppressed or surfaced in the client.
@@ -124,15 +130,19 @@ func newClient(config *rest.Config, options Options) (*client, error) {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
 
-	// By default, we de-duplicate and surface warnings.
-	config.WarningHandler = log.NewKubeAPIWarningLogger(
-		log.Log.WithName("KubeAPIWarningLogger"),
-		log.KubeAPIWarningLoggerOptions{
-			Deduplicate: !options.WarningHandler.AllowDuplicateLogs,
-		},
-	)
-	if options.WarningHandler.SuppressWarnings {
-		config.WarningHandler = rest.NoWarnings{}
+	if config.WarningHandler == nil {
+		// By default, we de-duplicate and surface warnings.
+		config.WarningHandler = log.NewKubeAPIWarningLogger(
+			log.Log.WithName("KubeAPIWarningLogger"),
+			log.KubeAPIWarningLoggerOptions{
+				// When we remove WarningHandlerOptions, the below will always be set to true.
+				Deduplicate: !options.WarningHandler.AllowDuplicateLogs,
+			},
+		)
+		// When we remove WarningHandlerOptions, we will remove the below condition.
+		if options.WarningHandler.SuppressWarnings {
+			config.WarningHandler = rest.NoWarnings{}
+		}
 	}
 
 	// Use the rest HTTP client for the provided config if unset
